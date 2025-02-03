@@ -1,0 +1,58 @@
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#pragma comment(lib, "Ws2_32.lib")
+#pragma warning(disable: 4996)
+#include <iostream>
+#include <winsock2.h>
+#include <windows.h>
+#include <fstream>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+#define PORT 666
+#define BUFFER_SIZE 1024
+
+int main() {
+    WSADATA wsaData;
+    SOCKET sock;
+    sockaddr_in serverAddr;
+    char buffer[BUFFER_SIZE];
+
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed." << std::endl;
+        return 1;
+    }
+
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock == INVALID_SOCKET) {
+        std::cerr << "Socket creation failed." << std::endl;
+        WSACleanup();
+        return 1;
+    }
+
+    
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_port = htons(PORT);
+    serverAddr.sin_addr.s_addr = inet_addr("127.0.0.1");
+
+    std::string filePath = "C:\\binary c+\\audio.wav";
+    std::cout << "Trying to open file: " << filePath << std::endl;
+    std::ifstream inFile(filePath, std::ios::binary);
+    if (!inFile) {
+        std::cerr << "Failed to open audio file. Error: " << strerror(errno) << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return 1;
+    }
+
+    
+    while (inFile.read(buffer, BUFFER_SIZE) || inFile.gcount() > 0) {
+        int bytesRead = inFile.gcount();
+        sendto(sock, buffer, bytesRead, 0, (sockaddr*)&serverAddr, sizeof(serverAddr));
+        std::cout << "Sent " << bytesRead << " bytes." << std::endl;
+    }
+
+    inFile.close();
+    closesocket(sock);
+    WSACleanup();
+    return 0;
+}
