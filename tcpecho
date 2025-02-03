@@ -1,0 +1,126 @@
+/* TCP – ЭХО СЕРВЕР
+для разрыва соединения клиент вводит строку “quit” */
+#include <winsock2.h>
+#include <windows.h>
+#include <iostream>
+#include <string>
+
+#pragma comment(lib, "Ws2_32.lib")
+#pragma warning(disable: 4996);
+using namespace std;
+
+u_short MY_PORT = 666;  // Порт, который слушает сервер
+
+// макрос для печати количества активных пользователей
+#define PRINTNUSERS \
+    if (nclients) \
+        cout << " user on-line " << nclients << endl; \
+    else \
+        cout << "No User on line\n";
+
+/* прототип функции, обслуживающий подключившихся клиентов */
+DWORD WINAPI ConToClient(LPVOID client_socket);
+
+// глобальная переменная – количество активных пользователей
+int nclients = 0;
+
+int main() {
+    char buff[1024];
+
+    // Шаг 1 - Инициализация Библиотеки Сокетов
+    if (WSAStartup(0x0202, (WSADATA*)&buff[0])) {
+        cout << "Error WSAStartup \n" << WSAGetLastError();
+        return -1; // Ошибка!
+    }
+
+    // Шаг 2 - создание сокета
+    SOCKET mysocket;
+    if ((mysocket = socket(AF_INET, SOCK_STREAM, 0)) < 0) { // Ошибка!
+        cout << "Error socket \n" << WSAGetLastError();
+        WSACleanup();  // Деинициализация библиотеки Winsock
+        return -1;
+    }
+
+    // Шаг 3 - связывание сокета с локальным адресом
+    sockaddr_in local_addr;
+    local_addr.sin_family = AF_INET;
+    local_addr.sin_port = htons(MY_PORT);
+    local_addr.sin_addr.s_addr = INADDR_ANY; // Используем INADDR_ANY для привязки к любому адресу
+
+    // вызываем bind для связывания
+    if (bind(mysocket, (sockaddr*)&local_addr, sizeof(local_addr))) { // Ошибка
+        cout << "Error bind \n" << WSAGetLastError();
+        closesocket(mysocket);  // закрываем сокет!
+        WSACleanup();
+        return -1;
+    }
+
+    // Шаг 4 - ожидание подключений
+    // размер очереди – 0x100
+    if (listen(mysocket, 0x100)) { // Ошибка
+        cout << "Error listen: " << WSAGetLastError();
+        closesocket(mysocket);
+        WSACleanup();
+        return -1;
+    }
+
+    cout << "Waiting clients...\n";
+
+    // Шаг 5 - извлечение сообщения из очереди
+    SOCKET client_socket;    // сокет для клиента
+    sockaddr_in client_addr; // адрес клиента
+
+    // функции accept необходимо передать размер структуры
+    int client_addr_size = sizeof(client_addr);
+
+    // цикл извлечения запросов на подключение из очереди
+    while ((client_socket = accept(mysocket, (sockaddr*)&client_addr, &client_addr_size))) {
+        nclients++;   // увеличиваем счетчик клиентов
+        struct hostent* hst; // пытаемся получить имя хоста
+        hst = gethostbyaddr((char*)&client_addr.sin_addr.s_addr, 4, AF_INET);
+
+        cout << "User join to channel\n"; // вывод сведений о клиенте
+        if (hst)
+            cout << hst->h_name;
+        else
+            cout << "";
+
+        cout << inet_ntoa(client_addr.sin_addr);
+        PRINTNUSERS
+            cout << endl;
+
+        DWORD thID; // Вызов нового потока для клиента
+        CreateThread(NULL, NULL, ConToClient, (LPVOID)(intptr_t)client_socket, NULL, &thID);
+    }
+
+    // Закрываем основной сокет перед выходом
+    closesocket(mysocket);
+    WSACleanup();
+    return 0;
+}
+
+/* Эта функция создается в отдельном потоке и обслуживает очередного подключившегося клиента независимо от остальных */
+DWORD WINAPI ConToClient(LPVOID client_socket) {
+    SOCKET my_sock = (SOCKET)(intptr_t)client_socket; // Приведение типа для получения сокета
+    char buff[1024];
+    char sHELLO[] = "Write a message:\r\n";
+
+    // Отправляем клиенту приветствие
+    send(my_sock, sHELLO, sizeof(sHELLO), 0);
+
+    // Цикл эхо: прием строки и возвращение ее клиенту
+    int len;
+    while ((len = recv(my_sock, buff, sizeof(buff) - 1, 0)) > 0) {
+        buff[len] = '\0'; // Завершаем строку
+        cout << "Delivered: " << buff << endl;
+        send(my_sock, buff, len, 0); // Отправляем обратно клиенту
+    }
+
+    // Произошел выход из цикла, соединение с клиентом разорвано
+    nclients--; // Уменьшаем счетчик активных клиентов
+    cout << "Disconnect\n";
+    PRINTNUSERS
+
+        closesocket(my_sock); // Закрываем сокет клиента
+    return 0;
+}
