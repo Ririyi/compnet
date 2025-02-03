@@ -1,0 +1,61 @@
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+#pragma comment(lib, "Ws2_32.lib")
+#pragma warning(disable: 4996)
+#include <iostream>
+#include <winsock2.h>
+#include <windows.h>
+#include <fstream>
+
+#pragma comment(lib, "Ws2_32.lib")
+
+#define PORT 666
+#define BUFFER_SIZE 1024
+
+int main() {
+    WSADATA wsaData;
+    SOCKET sock;
+    sockaddr_in serverAddr, clientAddr;
+    char buffer[BUFFER_SIZE];
+    int clientAddrSize = sizeof(clientAddr);
+
+    if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+        std::cerr << "WSAStartup failed." << std::endl;
+        return 1;
+    }
+
+    sock = socket(AF_INET, SOCK_DGRAM, 0);
+    if (sock == INVALID_SOCKET) {
+        std::cerr << "Socket creation failed." << std::endl;
+        WSACleanup();
+        return 1;
+    }
+
+    serverAddr.sin_family = AF_INET;
+    serverAddr.sin_addr.s_addr = INADDR_ANY;
+    serverAddr.sin_port = htons(PORT);
+
+    if (bind(sock, (sockaddr*)&serverAddr, sizeof(serverAddr)) == SOCKET_ERROR) {
+        std::cerr << "Bind failed." << std::endl;
+        closesocket(sock);
+        WSACleanup();
+        return 1;
+    }
+
+    std::cout << "Server is listening on port " << PORT << std::endl;
+    std::ofstream outFile("C:\\binary c+\\1.wav", std::ios::binary);
+
+    while (true) {
+        int bytesReceived = recvfrom(sock, buffer, BUFFER_SIZE, 0, (sockaddr*)&clientAddr, &clientAddrSize);
+        if (bytesReceived == SOCKET_ERROR) {
+            std::cerr << "recvfrom failed." << std::endl;
+            break;
+        }
+        outFile.write(buffer, bytesReceived);
+        std::cout << "Received " << bytesReceived << " bytes." << std::endl;
+    }
+
+    outFile.close();
+    closesocket(sock);
+    WSACleanup();
+    return 0;
+}
